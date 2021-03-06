@@ -6,15 +6,25 @@ import("packages", {alias = "get_packages"})
 -- the options
 local options =
 {
-    {'v', "verbose",    "k",  nil, "Enable verbose information."     }
-,   {'D', "diagnosis",  "k",  nil, "Enable diagnosis information."   }
-,   {nil, "shallow",    "k",  nil, "Only install the root packages." }
-,   {'p', "plat",       "kv", nil, "Set the given platform."         }
-,   {'a', "arch",       "kv", nil, "Set the given architecture."     }
-,   {nil, "ndk",        "kv", nil, "Set the android NDK directory."  }
-,   {nil, "mingw",      "kv", nil, "Set the MingW directory."        }
-,   {nil, "packages",   "vs", nil, "The package list."               }
+    {'v', "verbose",    "k",  nil, "Enable verbose information."                }
+,   {'D', "diagnosis",  "k",  nil, "Enable diagnosis information."              }
+,   {nil, "shallow",    "k",  nil, "Only install the root packages."            }
+,   {'k', "kind",       "kv", nil, "Enable static/shared library."              }
+,   {'p', "plat",       "kv", nil, "Set the given platform."                    }
+,   {'a', "arch",       "kv", nil, "Set the given architecture."                }
+,   {'m', "mode",       "kv", nil, "Set the given mode."                        }
+,   {nil, "cflags",     "kv", nil, "Set the cflags."                            }
+,   {nil, "cxxflags",   "kv", nil, "Set the cxxflags."                          }
+,   {nil, "ldflags",    "kv", nil, "Set the ldflags."                           }
+,   {nil, "ndk",        "kv", nil, "Set the android NDK directory."             }
+,   {nil, "sdk",        "kv", nil, "Set the SDK directory of cross toolchain."  }
+,   {nil, "vs_sdkver",  "kv", nil, "Set the Windows SDK version."               }
+,   {nil, "vs_runtime", "kv", nil, "Set the VS Runtime library."                }
+,   {nil, "mingw",      "kv", nil, "Set the MingW directory."                   }
+,   {nil, "toolchain",  "kv", nil, "Set the toolchain name."                    }
+,   {nil, "packages",   "vs", nil, "The package list."                          }
 }
+
 
 -- require packages
 function _require_packages(argv, packages)
@@ -31,13 +41,37 @@ function _require_packages(argv, packages)
     if argv.arch then
         table.insert(config_argv, "--arch=" .. argv.arch)
     end
+    if argv.mode then
+        table.insert(config_argv, "--mode=" .. argv.mode)
+    end
     if argv.ndk then
         table.insert(config_argv, "--ndk=" .. argv.ndk)
+    end
+    if argv.sdk then
+        table.insert(config_argv, "--sdk=" .. argv.sdk)
+    end
+    if argv.vs_sdkver then
+        table.insert(config_argv, "--vs_sdkver=" .. argv.vs_sdkver)
+    end
+    if argv.vs_runtime then
+        table.insert(config_argv, "--vs_runtime=" .. argv.vs_runtime)
     end
     if argv.mingw then
         table.insert(config_argv, "--mingw=" .. argv.mingw)
     end
-    os.execv("xmake", config_argv)
+    if argv.toolchain then
+        table.insert(config_argv, "--toolchain=" .. argv.toolchain)
+    end
+    if argv.cflags then
+        table.insert(config_argv, "--cflags=" .. argv.cflags)
+    end
+    if argv.cxxflags then
+        table.insert(config_argv, "--cxxflags=" .. argv.cxxflags)
+    end
+    if argv.ldflags then
+        table.insert(config_argv, "--ldflags=" .. argv.ldflags)
+    end
+    os.vexecv("xmake", config_argv)
     local require_argv = {"require", "-f", "-y"}
     if argv.verbose then
         table.insert(require_argv, "-v")
@@ -48,19 +82,32 @@ function _require_packages(argv, packages)
     if argv.shallow then
         table.insert(require_argv, "--shallow")
     end
+    if argv.mode == "debug" and argv.kind == "shared" then
+        table.insert(require_argv, "--extra={debug=true,configs={shared=true}}")
+    elseif argv.mode == "debug" then
+        table.insert(require_argv, "--extra={debug=true}")
+    elseif argv.kind == "shared" then
+        table.insert(require_argv, "--extra={configs={shared=true}}")
+    end
     table.join2(require_argv, packages)
-    os.execv("xmake", require_argv)
+    os.vexecv("xmake", require_argv)
 end
 
 -- the given package is supported?
 function _package_is_supported(argv, packagename)
     local packages = get_packages()
     if packages then
-        local plat = argv.plat or os.host()
+        local plat = argv.plat or os.subhost()
         local packages_plat = packages[plat]
         for _, package in ipairs(packages_plat) do
             if package and packagename:split("%s+")[1] == package.name then
-                local arch = argv.arch or platform.archs(plat)[1] or os.arch()
+                local arch = argv.arch
+                if not arch and plat ~= os.subhost() then
+                    arch = platform.archs(plat)[1]
+                end
+                if not arch then
+                    arch = os.subarch()
+                end
                 for _, package_arch in ipairs(package.archs) do
                     if arch == package_arch then
                         return true
@@ -83,6 +130,7 @@ function main(...)
         local files = os.iorun("git diff --name-only HEAD^")
         for _, file in ipairs(files:split('\n'), string.trim) do
             if file:find("packages", 1, true) and path.filename(file) == "xmake.lua" then
+                assert(file == file:lower(), "%s must be lower case!", file)
                 local package = path.filename(path.directory(file))
                 table.insert(packages, package)
             end
@@ -94,13 +142,14 @@ function main(...)
 
     -- remove unsupported packages
     for idx, package in irpairs(packages) do
+        assert(package == package:lower(), "package(%s) must be lower case!", package)
         if not _package_is_supported(argv, package) then
             table.remove(packages, idx)
         end
     end
     if #packages == 0 then
-        print("no testable packages on %s!", argv.plat or os.host())
-        return 
+        print("no testable packages on %s!", argv.plat or os.subhost())
+        return
     end
 
     -- prepare test project
@@ -118,5 +167,7 @@ function main(...)
     os.exec("xmake repo -l")
 
     -- require packages
-    _require_packages(argv, packages)
+    for _, package in ipairs(packages) do
+        _require_packages(argv, package)
+    end
 end

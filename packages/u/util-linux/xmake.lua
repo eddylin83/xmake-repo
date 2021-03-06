@@ -34,12 +34,20 @@ package("util-linux")
 
     on_install("macosx", "linux", function (package)
         local configs = {"--disable-dependency-tracking",
-                         "--disable-silent-rules", 
+                         "--disable-silent-rules",
                          "--without-python",
                          "--without-systemd",
                          "--enable-static=yes",
                          "--enable-shared=no",
                          "--with-bashcompletiondir=" .. package:installdir("share/bash-completion")}
+        table.insert(configs, "--enable-shared=" .. (package:config("shared") and "yes" or "no"))
+        table.insert(configs, "--enable-static=" .. (package:config("shared") and "no" or "yes"))
+        if package:debug() then
+            table.insert(configs, "--enable-debug")
+        end
+        if package:config("pic") ~= false then
+            table.insert(configs, "--with-pic")
+        end
         for name, enabled in pairs(package:configs()) do
             if not package:extraconf("configs", name, "builtin") then
                 if enabled then

@@ -5,7 +5,7 @@ package("cairo")
 
     set_urls("https://cairographics.org/releases/cairo-$(version).tar.xz")
     add_versions("1.16.0", "5e7b29b3f113ef870d1e3ecf8adf21f923396401604bda16d44be45e66052331")
- 
+
     if is_plat("windows") then
         add_deps("make", "libpng", "pixman", "zlib")
     else
@@ -22,6 +22,8 @@ package("cairo")
     end
 
     on_install("windows", function (package)
+        import("core.tool.toolchain")
+        local runenvs = toolchain.load("msvc"):runenvs()
         io.gsub("build/Makefile.win32.common", "%-MD", "-" .. package:config("vs_runtime"))
         io.gsub("build/Makefile.win32.common", "mkdir %-p", "xmake l mkdir")
         io.gsub("build/Makefile.win32.common", "dirname", "xmake l path.directory")
@@ -39,7 +41,7 @@ package("cairo")
         if zlib then
             io.gsub("build/Makefile.win32.common", "%$%(ZLIB_CFLAGS%)", "-I\"" .. zlib:installdir("include") .. "\"")
         end
-        os.vrunv("make", {"-f", "Makefile.win32", "CFG=" .. (package:debug() and "debug" or "release")})
+        os.vrunv("make", {"-f", "Makefile.win32", "CFG=" .. (package:debug() and "debug" or "release")}, {envs = runenvs})
         os.cp("src/*.h", package:installdir("include/cairo"))
         os.cp("src/**.lib", package:installdir("lib"))
     end)
@@ -52,7 +54,7 @@ package("cairo")
         table.insert(configs, "--enable-quartz=no")
         table.insert(configs, "--enable-xlib=" .. (is_plat("macosx") and "no" or "yes"))
         table.insert(configs, "--enable-xlib-xrender=" .. (is_plat("macosx") and "no" or "yes"))
-        import("package.tools.autoconf").install(package, configs) 
+        import("package.tools.autoconf").install(package, configs)
     end)
 
     on_test(function (package)

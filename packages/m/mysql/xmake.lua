@@ -5,13 +5,13 @@ package("mysql")
 
     set_urls("https://cdn.mysql.com/Downloads/MySQL-5.7/mysql-boost-$(version).tar.gz")
 
-    add_versions("5.7.23", "d05700ec5c1c6dae9311059dc1713206c29597f09dbd237bf0679b3c6438e87a")
+    add_versions("5.7.29", "00f514124de2bad1ba7b380cbbd46e316cae7fc7bc3a5621456cabf352f27978")
 
     if is_plat("macosx", "linux") then
         add_deps("cmake", "openssl")
     end
     add_includedirs("include/mysql")
- 
+
     on_install("macosx", "linux", function (package)
         -- https://bugs.mysql.com/bug.php?id=87348
         -- Fixes: "ADD_SUBDIRECTORY given source
